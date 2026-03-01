@@ -1,0 +1,4 @@
+# Testing Requirements
+# Install with: pip install -r test_requirements.txt
+
+requests==2.31.0

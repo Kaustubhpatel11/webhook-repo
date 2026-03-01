@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GitHub Events Monitor</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🚀 GitHub Events Monitor</h1>
+            <p class="subtitle">Real-time tracking of repository activities</p>
+        </header>
+
+        <div class="status-bar">
+            <span id="status" class="status-indicator">
+                <span class="dot"></span>
+                <span id="status-text">Connecting...</span>
+            </span>
+            <span id="last-update">Last updated: Never</span>
+        </div>
+
+        <div class="events-container" id="events-container">
+            <div class="loading">
+                <div class="spinner"></div>
+                <p>Loading events...</p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const eventsContainer = document.getElementById('events-container');
+        const statusText = document.getElementById('status-text');
+        const lastUpdateText = document.getElementById('last-update');
+        const statusIndicator = document.getElementById('status');
+
+        // Format timestamp to readable format
+        function formatTimestamp(isoString) {
+            const date = new Date(isoString);
+            const options = { 
+                year: 'numeric', 
+                month: 'long', 
+                day: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit',
+                timeZone: 'UTC',
+                timeZoneName: 'short'
+            };
+            
+            const formatted = date.toLocaleDateString('en-US', options);
+            
+            // Add ordinal suffix to day
+            const day = date.getUTCDate();
+            const suffix = getOrdinalSuffix(day);
+            
+            return formatted.replace(day.toString(), `${day}${suffix}`);
+        }
+
+        function getOrdinalSuffix(day) {
+            if (day > 3 && day < 21) return 'th';
+            switch (day % 10) {
+                case 1: return 'st';
+                case 2: return 'nd';
+                case 3: return 'rd';
+                default: return 'th';
+            }
+        }
+
+        // Format event based on action type
+        function formatEvent(event) {
+            const timestamp = formatTimestamp(event.timestamp);
+            
+            switch(event.action) {
+                case 'PUSH':
+                    return `<strong>${event.author}</strong> pushed to <span class="branch">${event.to_branch}</span> on ${timestamp}`;
+                
+                case 'PULL_REQUEST':
+                    return `<strong>${event.author}</strong> submitted a pull request from <span class="branch">${event.from_branch}</span> to <span class="branch">${event.to_branch}</span> on ${timestamp}`;
+                
+                case 'MERGE':
+                    return `<strong>${event.author}</strong> merged branch <span class="branch">${event.from_branch}</span> to <span class="branch">${event.to_branch}</span> on ${timestamp}`;
+                
+                default:
+                    return `Unknown action by ${event.author}`;
+            }
+        }
+
+        // Get action icon
+        function getActionIcon(action) {
+            switch(action) {
+                case 'PUSH':
+                    return '📤';
+                case 'PULL_REQUEST':
+                    return '🔀';
+                case 'MERGE':
+                    return '✅';
+                default:
+                    return '📝';
+            }
+        }
+
+        // Get action class for styling
+        function getActionClass(action) {
+            return action.toLowerCase().replace('_', '-');
+        }
+
+        // Fetch and display events
+        async function fetchEvents() {
+            try {
+                const response = await fetch('/api/events');
+                const data = await response.json();
+                
+                if (data.status === 'success') {
+                    displayEvents(data.events);
+                    updateStatus('connected', 'Connected');
+                } else {
+                    throw new Error(data.message || 'Failed to fetch events');
+                }
+                
+            } catch (error) {
+                console.error('Error fetching events:', error);
+                updateStatus('error', 'Connection Error');
+                showError();
+            }
+        }
+
+        // Display events in the UI
+        function displayEvents(events) {
+            if (events.length === 0) {
+                eventsContainer.innerHTML = `
+                    <div class="no-events">
+                        <p>📭 No events yet</p>
+                        <p class="hint">Waiting for GitHub webhook events...</p>
+                    </div>
+                `;
+                return;
+            }
+
+            const eventsHTML = events.map(event => `
+                <div class="event-item ${getActionClass(event.action)}">
+                    <div class="event-icon">${getActionIcon(event.action)}</div>
+                    <div class="event-content">
+                        <div class="event-action-badge">${event.action.replace('_', ' ')}</div>
+                        <p class="event-description">${formatEvent(event)}</p>
+                    </div>
+                </div>
+            `).join('');
+
+            eventsContainer.innerHTML = eventsHTML;
+            
+            // Update last update time
+            const now = new Date();
+            lastUpdateText.textContent = `Last updated: ${now.toLocaleTimeString()}`;
+        }
+
+        // Show error message
+        function showError() {
+            eventsContainer.innerHTML = `
+                <div class="error-message">
+                    <p>❌ Failed to load events</p>
+                    <p class="hint">Please check your connection and try again</p>
+                </div>
+            `;
+        }
+
+        // Update status indicator
+        function updateStatus(status, text) {
+            statusIndicator.className = `status-indicator ${status}`;
+            statusText.textContent = text;
+        }
+
+        // Initialize polling
+        function startPolling() {
+            fetchEvents(); // Initial fetch
+            setInterval(fetchEvents, 15000); // Poll every 15 seconds
+        }
+
+        // Start when page loads
+        window.addEventListener('DOMContentLoaded', startPolling);
+    </script>
+</body>
+</html>
